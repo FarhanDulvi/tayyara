@@ -19,11 +19,27 @@ export interface PriceQuote {
   raw: any;
 }
 
+/** Normalize a date value (Date object or string) to YYYY-MM-DD format */
+function toDateStr(val: any): string {
+  if (!val) return '';
+  if (val instanceof Date) return val.toISOString().slice(0, 10);
+  const s = String(val);
+  // If it's already YYYY-MM-DD, return as-is; otherwise try parsing
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  return new Date(s).toISOString().slice(0, 10);
+}
+
 export async function fetchCheapestPrices(args: PriceQuoteArgs): Promise<PriceQuote[]> {
   const token = process.env.TRAVELPAYOUTS_TOKEN;
   if (!token) {
     throw new Error('TRAVELPAYOUTS_TOKEN is not defined in environment variables');
   }
+
+  // Normalize all date inputs to YYYY-MM-DD strings
+  const departStart = toDateStr(args.depart_window_start);
+  const departEnd = toDateStr(args.depart_window_end);
+  const returnStart = args.return_window_start ? toDateStr(args.return_window_start) : undefined;
+  const returnEnd = args.return_window_end ? toDateStr(args.return_window_end) : undefined;
 
   // The latest prices API usually takes x-access-token header
   // Docs: https://travelpayouts.github.io/slate/#latest-prices
@@ -36,7 +52,7 @@ export async function fetchCheapestPrices(args: PriceQuoteArgs): Promise<PriceQu
       destination: args.destination,
       currency: 'usd',
       limit: 1000,
-      beginning_of_period: args.depart_window_start, // Helps narrow down
+      beginning_of_period: departStart, // Must be YYYY-MM-DD
     },
   });
 
@@ -52,14 +68,14 @@ export async function fetchCheapestPrices(args: PriceQuoteArgs): Promise<PriceQu
     const returnDate = item.return_date; 
     
     // Filter by departure window
-    if (departDate < args.depart_window_start || departDate > args.depart_window_end) {
+    if (departDate < departStart || departDate > departEnd) {
       continue;
     }
 
     // Filter by return window if provided
-    if (args.return_window_start && args.return_window_end) {
+    if (returnStart && returnEnd) {
       if (!returnDate) continue;
-      if (returnDate < args.return_window_start || returnDate > args.return_window_end) {
+      if (returnDate < returnStart || returnDate > returnEnd) {
         continue;
       }
     }
